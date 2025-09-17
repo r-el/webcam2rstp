@@ -20,28 +20,26 @@ def get_local_ip():
     return local_ip
 
 def start_rtsp_server(width, height, fps, port):
-    """Start FFmpeg RTSP server process"""
+    """Start FFmpeg RTSP publisher to MediaMTX server"""
     command = [
         'ffmpeg',
-        '-y',  # Overwrite output files
-        '-f', 'rawvideo',
-        '-pixel_format', 'bgr24',
+        '-f', 'v4l2',
         '-video_size', f'{width}x{height}',
         '-framerate', str(fps),
-        '-i', '-',
+        '-i', '/dev/video0',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-tune', 'zerolatency',
         '-pix_fmt', 'yuv420p',
-        '-g', '50',  # GOP size
+        '-g', '30',  # GOP size
         '-f', 'rtsp',
-        '-rtsp_transport', 'tcp',
-        f'rtsp://0.0.0.0:{port}/live'
+        f'rtsp://localhost:{port}/stream'
     ]
     
+    print(f"Starting FFmpeg with command: {' '.join(command)}")
+    
     process = subprocess.Popen(
-        command, 
-        stdin=subprocess.PIPE,
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
@@ -50,84 +48,53 @@ def start_rtsp_server(width, height, fps, port):
 
 def main():
     parser = argparse.ArgumentParser(description='Stream webcam to RTSP')
-    parser.add_argument('--camera', type=int, default=0, help='Camera device index')
+    parser.add_argument('--camera', type=str, default='/dev/video0', help='Camera device path')
     parser.add_argument('--width', type=int, default=640, help='Stream width')
     parser.add_argument('--height', type=int, default=480, help='Stream height')
     parser.add_argument('--fps', type=int, default=30, help='Stream FPS')
     parser.add_argument('--port', type=int, default=8554, help='RTSP port')
     args = parser.parse_args()
     
-    # Open webcam
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        print("Error: Could not open webcam")
+    # Check if camera device exists
+    if not os.path.exists(args.camera):
+        print(f"Error: Camera device {args.camera} not found")
         return
     
-    # Set camera properties
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-    cap.set(cv2.CAP_PROP_FPS, args.fps)
-    
-    # Get actual camera properties (might be different from requested)
-    actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    actual_fps = int(cap.get(cv2.CAP_PROP_FPS))
-    
-    print(f"Camera initialized: {actual_width}x{actual_height} @ {actual_fps}fps")
-    
     # Start RTSP server
-    process = start_rtsp_server(actual_width, actual_height, actual_fps, args.port)
+    process = start_rtsp_server(args.width, args.height, args.fps, args.port)
     
     # Get local IP for connection URL
     local_ip = get_local_ip()
     
     print("\n" + "="*60)
-    print(f"RTSP stream started on: rtsp://{local_ip}:{args.port}/live")
+    print(f"RTSP stream available on: rtsp://{local_ip}:{args.port}/stream")
     print("You can view the stream with VLC or similar RTSP-capable players")
+    print("MediaMTX server must be running on localhost")
     print("="*60 + "\n")
     
     print("Press Ctrl+C to stop streaming")
     
     try:
-        frame_count = 0
+        # Wait and monitor the process
         while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Error reading from webcam")
-                break
-            
-            frame_count += 1
-            if frame_count % 30 == 0:  # Print status every 30 frames
-                print(f"Streaming frame {frame_count}...")
-            
-            # Check if FFmpeg process is still running
             if process.poll() is not None:
-                print("FFmpeg process terminated")
+                stdout, stderr = process.communicate()
+                print("FFmpeg output:")
+                if stdout:
+                    print(stdout.decode())
+                if stderr:
+                    print("Errors:")
+                    print(stderr.decode())
                 break
-            
-            try:
-                # Write frame to FFmpeg stdin
-                process.stdin.write(frame.tobytes())
-                process.stdin.flush()
-            except BrokenPipeError:
-                print("FFmpeg pipe broken, stopping stream")
-                break
-            
-            # Small delay to control frame rate
-            time.sleep(1.0 / actual_fps)
+            time.sleep(1)
             
     except KeyboardInterrupt:
         print("Streaming stopped by user")
     finally:
         # Clean up
         if process:
-            try:
-                process.stdin.close()
-            except:
-                pass
             process.terminate()
             process.wait()
-        cap.release()
         print("Stream ended and resources released")
 
 if __name__ == "__main__":
