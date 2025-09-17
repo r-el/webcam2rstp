@@ -1,0 +1,26 @@
+{
+  "name": "webcam-streaming-service",
+  "version": "1.0.0",
+  "description": "A service to stream webcam video over the internet using WebRTC.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^4.0.0",
+    "webrtc": "^1.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.7"
+  },
+  "keywords": [
+    "webcam",
+    "streaming",
+    "webrtc",
+    "video"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

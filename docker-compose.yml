@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  webcam-stream:
+    build: .
+    ports:
+      - "8080:8080"
+    devices:
+      - "/dev/video0:/dev/video0"  # Map webcam device
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    privileged: true  # Needed for camera access
+    restart: unless-stopped
